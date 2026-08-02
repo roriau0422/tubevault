@@ -1,0 +1,105 @@
+{
+  "common": {
+    "appName": "TubeVault",
+    "cancel": "Болих",
+    "retry": "Дахин оролдох",
+    "delete": "Устгах",
+    "save": "Хадгалах",
+    "close": "Хаах",
+    "loading": "Ачаалж байна…"
+  },
+  "tabs": {
+    "search": "Хайх",
+    "library": "Сан",
+    "downloads": "Таталт",
+    "settings": "Тохиргоо"
+  },
+  "search": {
+    "placeholder": "YouTube-ээс хайх…",
+    "noResults": "Үр дүн олдсонгүй",
+    "preview": "Сонсох",
+    "downloadAudio": "Аудио татах",
+    "downloadVideo": "Видео татах",
+    "chooseFormat": "Татах төрлөө сонгоно уу",
+    "hint": "YouTube-ээс хайж, аудио юмуу видеогоо оффлайн хадгалаарай",
+    "chooseCategory": "Энэ татацад ангилал сонгоно уу"
+  },
+  "library": {
+    "empty": "Таны сан хоосон байна",
+    "all": "Бүгд",
+    "audio": "Аудио",
+    "video": "Видео",
+    "deleteConfirmTitle": "Устгах уу?",
+    "deleteConfirmBody": "Файл төхөөрөмжөөс устана",
+    "editCategories": "Ангилал засах",
+    "rename": "Нэр засах",
+    "renameName": "Нэр",
+    "renameArtist": "Уран бүтээлч"
+  },
+  "downloads": {
+    "empty": "Идэвхтэй таталт алга",
+    "active": "Идэвхтэй",
+    "completed": "Дууссан",
+    "status": {
+      "queued": "Дараалалд байна",
+      "resolving": "Мэдээлэл авч байна",
+      "downloading": "Татаж байна",
+      "downloading_video": "Видео татаж байна",
+      "downloading_audio": "Аудио татаж байна",
+      "muxing": "Нэгтгэж байна",
+      "finalizing": "Дуусгаж байна",
+      "done": "Дууссан",
+      "failed": "Амжилтгүй"
+    }
+  },
+  "player": {
+    "nowPlaying": "Тоглож байна",
+    "noTrack": "Юу ч тоглохгүй байна",
+    "shuffle": "Холих",
+    "repeat": "Давтах",
+    "queue": "Дараалал"
+  },
+  "settings": {
+    "language": "Хэл",
+    "languageMn": "Монгол",
+    "languageEn": "English",
+    "storage": "Хадгалалт",
+    "usedSpace": "Ашигласан зай",
+    "mediaFiles": "Медиа файл",
+    "appearance": "Харагдац",
+    "theme": "Theme",
+    "themeSystem": "Системийг дагана",
+    "themeLight": "Цайвар",
+    "themeDark": "Харанхуй",
+    "downloads": "Таталт",
+    "askCategory": "Татахдаа ангилал сонгох",
+    "askCategoryHint": "Унтраалттай үед ангилал автоматаар оноогдоно — сангийн жагсаалтад удаан дараад хэзээ ч засаж болно."
+  },
+  "categories": {
+    "title": "Ангилал",
+    "new": "Шинэ ангилал",
+    "namePlaceholder": "Ангиллын нэр",
+    "seeds": {
+      "rnb": "R&B",
+      "pop": "Поп",
+      "hiphop": "Хип хоп",
+      "rock": "Рок/Метал",
+      "edm": "Электрон",
+      "classical": "Сонгодог",
+      "country": "Зохиолын дуу",
+      "educational": "Боловсрол",
+      "podcasts": "Подкаст",
+      "other": "Бусад"
+    }
+  },
+  "errors": {
+    "RESOLVE_FAILED": "Бичлэгийн мэдээлэл авч чадсангүй",
+    "NO_FORMAT": "Тохирох формат олдсонгүй",
+    "DOWNLOAD_FAILED": "Таталт амжилтгүй боллоо",
+    "URL_EXPIRED": "Холбоосын хугацаа дууссан",
+    "MUX_FAILED": "Видео нэгтгэхэд алдаа гарлаа",
+    "STORAGE_FULL": "Хадгалах зай дүүрсэн байна",
+    "NETWORK": "Сүлжээний алдаа гарлаа",
+    "UNKNOWN": "Тодорхойгүй алдаа гарлаа"
+  }
+}
