@@ -1,0 +1,566 @@
+diff --git a/node_modules/@nikhil-cephei/ffmpeg-kit-react-native/android/build.gradle b/node_modules/@nikhil-cephei/ffmpeg-kit-react-native/android/build.gradle
+index 47e151c..a23b092 100644
+--- a/node_modules/@nikhil-cephei/ffmpeg-kit-react-native/android/build.gradle
++++ b/node_modules/@nikhil-cephei/ffmpeg-kit-react-native/android/build.gradle
+@@ -16,6 +16,17 @@ def isNewArchitectureEnabled() {
+ }
+ 
+ apply plugin: 'com.android.library'
++// Upstream never applies this, so generateCodegenArtifactsFromSchema never runs
++// for this library: no Java spec class and no codegen jni dir, which breaks both
++// javac and the app's CMake autolinking (it add_subdirectory()s that dir and
++// links react_codegen_FFmpegKitReactNativeSpec).
++apply plugin: 'com.facebook.react'
++
++react {
++  jsRootDir = file("../src/")
++  libraryName = "FFmpegKitReactNativeSpec"
++  codegenJavaPackageName = "com.arthenica.ffmpegkit.reactnative"
++}
+ 
+ static def safePackageName(String packageName) {
+   packageName.replace("-lts", "")
+@@ -67,7 +78,12 @@ android {
+ 
+   sourceSets {
+     main {
+-      java.srcDirs += isNewArchitectureEnabled() ? ['src/newarch'] : ['src/oldarch']
++      // Always oldarch. The newarch source extends NativeFFmpegKitReactNativeModuleSpec,
++      // but codegen names the generated class after the spec file (src/NativeFFmpegKit.js
++      // -> NativeFFmpegKitSpec), so that superclass never exists and every inherited call
++      // fails to resolve. The two source sets are byte-identical apart from the superclass,
++      // and the legacy module is served through the bridgeless TurboModule interop layer.
++      java.srcDirs += ['src/oldarch']
+     }
+   }
+ }
+diff --git a/node_modules/@nikhil-cephei/ffmpeg-kit-react-native/android/src/main/java/com/arthenica/ffmpegkit/reactnative/FFmpegKitReactNativePackage.java b/node_modules/@nikhil-cephei/ffmpeg-kit-react-native/android/src/main/java/com/arthenica/ffmpegkit/reactnative/FFmpegKitReactNativePackage.java
+index cdc890c..93810df 100644
+--- a/node_modules/@nikhil-cephei/ffmpeg-kit-react-native/android/src/main/java/com/arthenica/ffmpegkit/reactnative/FFmpegKitReactNativePackage.java
++++ b/node_modules/@nikhil-cephei/ffmpeg-kit-react-native/android/src/main/java/com/arthenica/ffmpegkit/reactnative/FFmpegKitReactNativePackage.java
+@@ -55,7 +55,7 @@ public class FFmpegKitReactNativePackage extends TurboReactPackage {
+           false,  // needsEagerInit
+           false,  // hasConstants
+           false,  // isCxxModule
+-          BuildConfig.IS_NEW_ARCHITECTURE_ENABLED  // isTurboModule
++          false  // isTurboModule — always the legacy module, see android/build.gradle sourceSets
+         )
+       );
+       return moduleInfos;
+diff --git a/node_modules/@nikhil-cephei/ffmpeg-kit-react-native/ffmpeg-kit-react-native.podspec b/node_modules/@nikhil-cephei/ffmpeg-kit-react-native/ffmpeg-kit-react-native.podspec
+index 97e602a..fcb4cc6 100644
+--- a/node_modules/@nikhil-cephei/ffmpeg-kit-react-native/ffmpeg-kit-react-native.podspec
++++ b/node_modules/@nikhil-cephei/ffmpeg-kit-react-native/ffmpeg-kit-react-native.podspec
+@@ -33,7 +33,7 @@ Pod::Spec.new do |s|
+     }
+   end
+ 
+-  s.default_subspec = 'https'
++  s.default_subspec = 'full-gpl'
+ 
+   s.subspec 'min' do |ss|
+     ss.dependency 'ffmpeg-kit-ios-min', "6.0"
+@@ -99,6 +99,7 @@ Pod::Spec.new do |s|
+   end
+ 
+   s.subspec 'full-gpl' do |ss|
++    ss.source_files = '**/FFmpegKitReactNativeModule.{mm,m,h}'
+     ss.dependency 'ffmpeg-kit-ios-full-gpl', '6.0'
+   end
+ 
+diff --git a/node_modules/@nikhil-cephei/ffmpeg-kit-react-native/ios/FFmpegKitReactNativeModule.h b/node_modules/@nikhil-cephei/ffmpeg-kit-react-native/ios/FFmpegKitReactNativeModule.h
+index 43f65bc..ac2d3e5 100644
+--- a/node_modules/@nikhil-cephei/ffmpeg-kit-react-native/ios/FFmpegKitReactNativeModule.h
++++ b/node_modules/@nikhil-cephei/ffmpeg-kit-react-native/ios/FFmpegKitReactNativeModule.h
+@@ -5,7 +5,7 @@
+ #import <FFmpegKitReactNativeSpec/FFmpegKitReactNativeSpec.h>
+ #import <React/RCTEventEmitter.h>
+ 
+-@interface FFmpegKitReactNativeModule : RCTEventEmitter <NativeFFmpegKitReactNativeModuleSpec>
++@interface FFmpegKitReactNativeModule : RCTEventEmitter <NativeFFmpegKitSpec>
+ 
+ #else
+ 
+diff --git a/node_modules/@nikhil-cephei/ffmpeg-kit-react-native/ios/FFmpegKitReactNativeModule.mm b/node_modules/@nikhil-cephei/ffmpeg-kit-react-native/ios/FFmpegKitReactNativeModule.mm
+index eb59462..1b2ca26 100644
+--- a/node_modules/@nikhil-cephei/ffmpeg-kit-react-native/ios/FFmpegKitReactNativeModule.mm
++++ b/node_modules/@nikhil-cephei/ffmpeg-kit-react-native/ios/FFmpegKitReactNativeModule.mm
+@@ -141,7 +141,7 @@ RCT_EXPORT_MODULE(FFmpegKitReactNativeModule);
+ 
+ // AbstractSession
+ 
+-RCT_EXPORT_METHOD(abstractSessionGetEndTime:(int)sessionId resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(abstractSessionGetEndTime:(double)sessionId resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     AbstractSession* session = (AbstractSession*)[FFmpegKitConfig getSession:sessionId];
+     if (session == nil) {
+       reject(@"SESSION_NOT_FOUND", @"Session not found.", nil);
+@@ -155,7 +155,7 @@ RCT_EXPORT_METHOD(abstractSessionGetEndTime:(int)sessionId resolver:(RCTPromiseR
+     }
+ }
+ 
+-RCT_EXPORT_METHOD(abstractSessionGetDuration:(int)sessionId resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(abstractSessionGetDuration:(double)sessionId resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     AbstractSession* session = (AbstractSession*)[FFmpegKitConfig getSession:sessionId];
+     if (session == nil) {
+       reject(@"SESSION_NOT_FOUND", @"Session not found.", nil);
+@@ -164,7 +164,7 @@ RCT_EXPORT_METHOD(abstractSessionGetDuration:(int)sessionId resolver:(RCTPromise
+     }
+ }
+ 
+-RCT_EXPORT_METHOD(abstractSessionGetAllLogs:(int)sessionId withTimeout:(int)waitTimeout resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(abstractSessionGetAllLogs:(double)sessionId waitTimeout:(double)waitTimeout resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     AbstractSession* session = (AbstractSession*)[FFmpegKitConfig getSession:sessionId];
+     if (session == nil) {
+       reject(@"SESSION_NOT_FOUND", @"Session not found.", nil);
+@@ -180,7 +180,7 @@ RCT_EXPORT_METHOD(abstractSessionGetAllLogs:(int)sessionId withTimeout:(int)wait
+     }
+ }
+ 
+-RCT_EXPORT_METHOD(abstractSessionGetLogs:(int)sessionId resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(abstractSessionGetLogs:(double)sessionId resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     AbstractSession* session = (AbstractSession*)[FFmpegKitConfig getSession:sessionId];
+     if (session == nil) {
+       reject(@"SESSION_NOT_FOUND", @"Session not found.", nil);
+@@ -190,7 +190,7 @@ RCT_EXPORT_METHOD(abstractSessionGetLogs:(int)sessionId resolver:(RCTPromiseReso
+     }
+ }
+ 
+-RCT_EXPORT_METHOD(abstractSessionGetAllLogsAsString:(int)sessionId withTimeout:(int)waitTimeout resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(abstractSessionGetAllLogsAsString:(double)sessionId waitTimeout:(double)waitTimeout resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     AbstractSession* session = (AbstractSession*)[FFmpegKitConfig getSession:sessionId];
+     if (session == nil) {
+       reject(@"SESSION_NOT_FOUND", @"Session not found.", nil);
+@@ -206,7 +206,7 @@ RCT_EXPORT_METHOD(abstractSessionGetAllLogsAsString:(int)sessionId withTimeout:(
+     }
+ }
+ 
+-RCT_EXPORT_METHOD(abstractSessionGetState:(int)sessionId resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(abstractSessionGetState:(double)sessionId resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     AbstractSession* session = (AbstractSession*)[FFmpegKitConfig getSession:sessionId];
+     if (session == nil) {
+       reject(@"SESSION_NOT_FOUND", @"Session not found.", nil);
+@@ -215,7 +215,7 @@ RCT_EXPORT_METHOD(abstractSessionGetState:(int)sessionId resolver:(RCTPromiseRes
+     }
+ }
+ 
+-RCT_EXPORT_METHOD(abstractSessionGetReturnCode:(int)sessionId resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(abstractSessionGetReturnCode:(double)sessionId resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     AbstractSession* session = (AbstractSession*)[FFmpegKitConfig getSession:sessionId];
+     if (session == nil) {
+       reject(@"SESSION_NOT_FOUND", @"Session not found.", nil);
+@@ -229,7 +229,7 @@ RCT_EXPORT_METHOD(abstractSessionGetReturnCode:(int)sessionId resolver:(RCTPromi
+     }
+ }
+ 
+-RCT_EXPORT_METHOD(abstractSessionGetFailStackTrace:(int)sessionId resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(abstractSessionGetFailStackTrace:(double)sessionId resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     AbstractSession* session = (AbstractSession*)[FFmpegKitConfig getSession:sessionId];
+     if (session == nil) {
+       reject(@"SESSION_NOT_FOUND", @"Session not found.", nil);
+@@ -238,7 +238,7 @@ RCT_EXPORT_METHOD(abstractSessionGetFailStackTrace:(int)sessionId resolver:(RCTP
+     }
+ }
+ 
+-RCT_EXPORT_METHOD(thereAreAsynchronousMessagesInTransmit:(int)sessionId resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(thereAreAsynchronousMessagesInTransmit:(double)sessionId resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     AbstractSession* session = (AbstractSession*)[FFmpegKitConfig getSession:sessionId];
+     if (session == nil) {
+       reject(@"SESSION_NOT_FOUND", @"Session not found.", nil);
+@@ -249,18 +249,18 @@ RCT_EXPORT_METHOD(thereAreAsynchronousMessagesInTransmit:(int)sessionId resolver
+ 
+ // ArchDetect
+ 
+-RCT_EXPORT_METHOD(getArch:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(getArch:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     resolve([ArchDetect getArch]);
+ }
+ 
+ // FFmpegSession
+ 
+-RCT_EXPORT_METHOD(ffmpegSession:(NSArray*)arguments resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(ffmpegSession:(NSArray*)arguments resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     FFmpegSession* session = [FFmpegSession create:arguments withCompleteCallback:nil withLogCallback:nil withStatisticsCallback:nil withLogRedirectionStrategy:LogRedirectionStrategyNeverPrintLogs];
+     resolve([FFmpegKitReactNativeModule toSessionDictionary:session]);
+ }
+ 
+-RCT_EXPORT_METHOD(ffmpegSessionGetAllStatistics:(int)sessionId withTimeout:(int)waitTimeout resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(ffmpegSessionGetAllStatistics:(double)sessionId waitTimeout:(double)waitTimeout resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     AbstractSession* session = (AbstractSession*)[FFmpegKitConfig getSession:sessionId];
+     if (session == nil) {
+       reject(@"SESSION_NOT_FOUND", @"Session not found.", nil);
+@@ -280,7 +280,7 @@ RCT_EXPORT_METHOD(ffmpegSessionGetAllStatistics:(int)sessionId withTimeout:(int)
+     }
+ }
+ 
+-RCT_EXPORT_METHOD(ffmpegSessionGetStatistics:(int)sessionId resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(ffmpegSessionGetStatistics:(double)sessionId resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     AbstractSession* session = (AbstractSession*)[FFmpegKitConfig getSession:sessionId];
+     if (session == nil) {
+       reject(@"SESSION_NOT_FOUND", @"Session not found.", nil);
+@@ -296,21 +296,21 @@ RCT_EXPORT_METHOD(ffmpegSessionGetStatistics:(int)sessionId resolver:(RCTPromise
+ 
+ // FFprobeSession
+ 
+-RCT_EXPORT_METHOD(ffprobeSession:(NSArray*)arguments resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(ffprobeSession:(NSArray*)arguments resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     FFprobeSession* session = [FFprobeSession create:arguments withCompleteCallback:nil withLogCallback:nil withLogRedirectionStrategy:LogRedirectionStrategyNeverPrintLogs];
+     resolve([FFmpegKitReactNativeModule toSessionDictionary:session]);
+ }
+ 
+ // MediaInformationSession
+ 
+-RCT_EXPORT_METHOD(mediaInformationSession:(NSArray*)arguments resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(mediaInformationSession:(NSArray*)arguments resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     MediaInformationSession* session = [MediaInformationSession create:arguments withCompleteCallback:nil withLogCallback:nil];
+     resolve([FFmpegKitReactNativeModule toSessionDictionary:session]);
+ }
+ 
+ // MediaInformationJsonParser
+ 
+-RCT_EXPORT_METHOD(mediaInformationJsonParserFrom:(NSString*)ffprobeJsonOutput resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(mediaInformationJsonParserFrom:(NSString*)ffprobeJsonOutput resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     @try {
+         MediaInformation* mediaInformation = [MediaInformationJsonParser fromWithError:ffprobeJsonOutput];
+         resolve([FFmpegKitReactNativeModule toMediaInformationDictionary:mediaInformation]);
+@@ -320,7 +320,7 @@ RCT_EXPORT_METHOD(mediaInformationJsonParserFrom:(NSString*)ffprobeJsonOutput re
+     }
+ }
+ 
+-RCT_EXPORT_METHOD(mediaInformationJsonParserFromWithError:(NSString*)ffprobeJsonOutput resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(mediaInformationJsonParserFromWithError:(NSString*)ffprobeJsonOutput resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     @try {
+         MediaInformation* mediaInformation = [MediaInformationJsonParser fromWithError:ffprobeJsonOutput];
+         resolve([FFmpegKitReactNativeModule toMediaInformationDictionary:mediaInformation]);
+@@ -332,7 +332,7 @@ RCT_EXPORT_METHOD(mediaInformationJsonParserFromWithError:(NSString*)ffprobeJson
+ 
+ // FFmpegKitConfig
+ 
+-RCT_EXPORT_METHOD(enableRedirection:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(enableRedirection:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     [self enableLogs];
+     [self enableStatistics];
+     [FFmpegKitConfig enableRedirection];
+@@ -340,83 +340,83 @@ RCT_EXPORT_METHOD(enableRedirection:(RCTPromiseResolveBlock)resolve rejecter:(RC
+     resolve(nil);
+ }
+ 
+-RCT_EXPORT_METHOD(disableRedirection:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(disableRedirection:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     [FFmpegKitConfig disableRedirection];
+ 
+     resolve(nil);
+ }
+ 
+-RCT_EXPORT_METHOD(enableLogs:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(enableLogs:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     [self enableLogs];
+ 
+     resolve(nil);
+ }
+ 
+-RCT_EXPORT_METHOD(disableLogs:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(disableLogs:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     [self disableLogs];
+ 
+     resolve(nil);
+ }
+ 
+-RCT_EXPORT_METHOD(enableStatistics:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(enableStatistics:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     [self enableStatistics];
+ 
+     resolve(nil);
+ }
+ 
+-RCT_EXPORT_METHOD(disableStatistics:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(disableStatistics:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     [self disableStatistics];
+ 
+     resolve(nil);
+ }
+ 
+-RCT_EXPORT_METHOD(setFontconfigConfigurationPath:(NSString*)path resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(setFontconfigConfigurationPath:(NSString*)path resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     [FFmpegKitConfig setFontconfigConfigurationPath:path];
+ 
+     resolve(nil);
+ }
+ 
+-RCT_EXPORT_METHOD(setFontDirectory:(NSString*)fontDirectoryPath with:(NSDictionary*)fontNameMap resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(setFontDirectory:(NSString*)fontDirectoryPath fontNameMap:(NSDictionary*)fontNameMap resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     [FFmpegKitConfig setFontDirectory:fontDirectoryPath with:fontNameMap];
+ 
+     resolve(nil);
+ }
+ 
+-RCT_EXPORT_METHOD(setFontDirectoryList:(NSArray*)fontDirectoryList with:(NSDictionary*)fontNameMap resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(setFontDirectoryList:(NSArray*)fontDirectoryList fontNameMap:(NSDictionary*)fontNameMap resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     [FFmpegKitConfig setFontDirectoryList:fontDirectoryList with:fontNameMap];
+ 
+     resolve(nil);
+ }
+ 
+-RCT_EXPORT_METHOD(registerNewFFmpegPipe:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(registerNewFFmpegPipe:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     resolve([FFmpegKitConfig registerNewFFmpegPipe]);
+ }
+ 
+-RCT_EXPORT_METHOD(closeFFmpegPipe:(NSString*)ffmpegPipePath resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(closeFFmpegPipe:(NSString*)ffmpegPipePath resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     [FFmpegKitConfig closeFFmpegPipe:ffmpegPipePath];
+ 
+     resolve(nil);
+ }
+ 
+-RCT_EXPORT_METHOD(getFFmpegVersion:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(getFFmpegVersion:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     resolve([FFmpegKitConfig getFFmpegVersion]);
+ }
+ 
+-RCT_EXPORT_METHOD(isLTSBuild:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(isLTSBuild:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     resolve([NSNumber numberWithInt:[FFmpegKitConfig isLTSBuild]]);
+ }
+ 
+-RCT_EXPORT_METHOD(getBuildDate:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(getBuildDate:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     resolve([FFmpegKitConfig getBuildDate]);
+ }
+ 
+-RCT_EXPORT_METHOD(setEnvironmentVariable:(NSString*)variableName with:(NSString*)variableValue resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(setEnvironmentVariable:(NSString*)variableName variableValue:(NSString*)variableValue resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     [FFmpegKitConfig setEnvironmentVariable:variableName value:variableValue];
+ 
+     resolve(nil);
+ }
+ 
+-RCT_EXPORT_METHOD(ignoreSignal:(int)signalValue resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(ignoreSignal:(double)signalValue resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     if ((signalValue == SignalInt) || (signalValue == SignalQuit) || (signalValue == SignalPipe) || (signalValue == SignalTerm) || (signalValue == SignalXcpu)) {
+         resolve(nil);
+     } else {
+@@ -424,7 +424,7 @@ RCT_EXPORT_METHOD(ignoreSignal:(int)signalValue resolver:(RCTPromiseResolveBlock
+     }
+ }
+ 
+-RCT_EXPORT_METHOD(ffmpegSessionExecute:(int)sessionId resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(ffmpegSessionExecute:(double)sessionId resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     AbstractSession* session = (AbstractSession*)[FFmpegKitConfig getSession:sessionId];
+     if (session == nil) {
+       reject(@"SESSION_NOT_FOUND", @"Session not found.", nil);
+@@ -440,7 +440,7 @@ RCT_EXPORT_METHOD(ffmpegSessionExecute:(int)sessionId resolver:(RCTPromiseResolv
+     }
+ }
+ 
+-RCT_EXPORT_METHOD(ffprobeSessionExecute:(int)sessionId resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(ffprobeSessionExecute:(double)sessionId resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     AbstractSession* session = (AbstractSession*)[FFmpegKitConfig getSession:sessionId];
+     if (session == nil) {
+       reject(@"SESSION_NOT_FOUND", @"Session not found.", nil);
+@@ -456,7 +456,7 @@ RCT_EXPORT_METHOD(ffprobeSessionExecute:(int)sessionId resolver:(RCTPromiseResol
+     }
+ }
+ 
+-RCT_EXPORT_METHOD(mediaInformationSessionExecute:(int)sessionId withTimeout:(int)waitTimeout resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(mediaInformationSessionExecute:(double)sessionId waitTimeout:(double)waitTimeout resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     AbstractSession* session = (AbstractSession*)[FFmpegKitConfig getSession:sessionId];
+     if (session == nil) {
+       reject(@"SESSION_NOT_FOUND", @"Session not found.", nil);
+@@ -478,7 +478,7 @@ RCT_EXPORT_METHOD(mediaInformationSessionExecute:(int)sessionId withTimeout:(int
+     }
+ }
+ 
+-RCT_EXPORT_METHOD(asyncFFmpegSessionExecute:(int)sessionId resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(asyncFFmpegSessionExecute:(double)sessionId resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     AbstractSession* session = (AbstractSession*)[FFmpegKitConfig getSession:sessionId];
+     if (session == nil) {
+       reject(@"SESSION_NOT_FOUND", @"Session not found.", nil);
+@@ -492,7 +492,7 @@ RCT_EXPORT_METHOD(asyncFFmpegSessionExecute:(int)sessionId resolver:(RCTPromiseR
+     }
+ }
+ 
+-RCT_EXPORT_METHOD(asyncFFprobeSessionExecute:(int)sessionId resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(asyncFFprobeSessionExecute:(double)sessionId resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     AbstractSession* session = (AbstractSession*)[FFmpegKitConfig getSession:sessionId];
+     if (session == nil) {
+       reject(@"SESSION_NOT_FOUND", @"Session not found.", nil);
+@@ -506,7 +506,7 @@ RCT_EXPORT_METHOD(asyncFFprobeSessionExecute:(int)sessionId resolver:(RCTPromise
+     }
+ }
+ 
+-RCT_EXPORT_METHOD(asyncMediaInformationSessionExecute:(int)sessionId withTimeout:(int)waitTimeout resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(asyncMediaInformationSessionExecute:(double)sessionId waitTimeout:(double)waitTimeout resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     AbstractSession* session = (AbstractSession*)[FFmpegKitConfig getSession:sessionId];
+     if (session == nil) {
+       reject(@"SESSION_NOT_FOUND", @"Session not found.", nil);
+@@ -526,25 +526,25 @@ RCT_EXPORT_METHOD(asyncMediaInformationSessionExecute:(int)sessionId withTimeout
+     }
+ }
+ 
+-RCT_EXPORT_METHOD(getLogLevel:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(getLogLevel:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     resolve([NSNumber numberWithInt:[FFmpegKitConfig getLogLevel]]);
+ }
+ 
+-RCT_EXPORT_METHOD(setLogLevel:(int)level resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(setLogLevel:(double)level resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     [FFmpegKitConfig setLogLevel:level];
+     resolve(nil);
+ }
+ 
+-RCT_EXPORT_METHOD(getSessionHistorySize:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(getSessionHistorySize:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     resolve([NSNumber numberWithInt:[FFmpegKitConfig getSessionHistorySize]]);
+ }
+ 
+-RCT_EXPORT_METHOD(setSessionHistorySize:(int)sessionHistorySize resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(setSessionHistorySize:(double)sessionHistorySize resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     [FFmpegKitConfig setSessionHistorySize:sessionHistorySize];
+     resolve(nil);
+ }
+ 
+-RCT_EXPORT_METHOD(getSession:(int)sessionId resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(getSession:(double)sessionId resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     AbstractSession* session = (AbstractSession*)[FFmpegKitConfig getSession:sessionId];
+     if (session == nil) {
+         reject(@"SESSION_NOT_FOUND", @"Session not found.", nil);
+@@ -553,45 +553,45 @@ RCT_EXPORT_METHOD(getSession:(int)sessionId resolver:(RCTPromiseResolveBlock)res
+     }
+ }
+ 
+-RCT_EXPORT_METHOD(getLastSession:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(getLastSession:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     resolve([FFmpegKitReactNativeModule toSessionDictionary:[FFmpegKitConfig getLastSession]]);
+ }
+ 
+-RCT_EXPORT_METHOD(getLastCompletedSession:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(getLastCompletedSession:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     resolve([FFmpegKitReactNativeModule toSessionDictionary:[FFmpegKitConfig getLastCompletedSession]]);
+ }
+ 
+-RCT_EXPORT_METHOD(getSessions:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(getSessions:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     resolve([FFmpegKitReactNativeModule toSessionArray:[FFmpegKitConfig getSessions]]);
+ }
+ 
+-RCT_EXPORT_METHOD(clearSessions:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(clearSessions:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     [FFmpegKitConfig clearSessions];
+     resolve(nil);
+ }
+ 
+-RCT_EXPORT_METHOD(getSessionsByState:(int)sessionState resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
+-    resolve([FFmpegKitReactNativeModule toSessionArray:[FFmpegKitConfig getSessionsByState:sessionState]]);
++RCT_EXPORT_METHOD(getSessionsByState:(double)sessionState resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
++    resolve([FFmpegKitReactNativeModule toSessionArray:[FFmpegKitConfig getSessionsByState:(SessionState)sessionState]]);
+ }
+ 
+-RCT_EXPORT_METHOD(getLogRedirectionStrategy:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(getLogRedirectionStrategy:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     resolve([FFmpegKitReactNativeModule logRedirectionStrategyToNumber:[FFmpegKitConfig getLogRedirectionStrategy]]);
+ }
+ 
+-RCT_EXPORT_METHOD(setLogRedirectionStrategy:(int)logRedirectionStrategy resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
+-    [FFmpegKitConfig setLogRedirectionStrategy:logRedirectionStrategy];
++RCT_EXPORT_METHOD(setLogRedirectionStrategy:(double)logRedirectionStrategy resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
++    [FFmpegKitConfig setLogRedirectionStrategy:(LogRedirectionStrategy)logRedirectionStrategy];
+     resolve(nil);
+ }
+ 
+-RCT_EXPORT_METHOD(messagesInTransmit:(int)sessionId resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(messagesInTransmit:(double)sessionId resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     resolve([NSNumber numberWithInt:[FFmpegKitConfig messagesInTransmit:sessionId]]);
+ }
+ 
+-RCT_EXPORT_METHOD(getPlatform:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(getPlatform:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     resolve(PLATFORM_NAME);
+ }
+ 
+-RCT_EXPORT_METHOD(writeToPipe:(NSString*)inputPath onPipe:(NSString*)namedPipePath resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(writeToPipe:(NSString*)inputPath namedPipePath:(NSString*)namedPipePath resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     dispatch_async(asyncDispatchQueue, ^{
+ 
+         NSLog(@"Starting copy %@ to pipe %@ operation.\n", inputPath, namedPipePath);
+@@ -644,45 +644,45 @@ RCT_EXPORT_METHOD(writeToPipe:(NSString*)inputPath onPipe:(NSString*)namedPipePa
+     });
+ }
+ 
+-RCT_EXPORT_METHOD(selectDocument:(BOOL)writable title:(NSString*)title type:(NSString*)type array:(NSArray*)extraTypes resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(selectDocument:(BOOL)writable title:(NSString*)title type:(NSString*)type extraTypes:(NSArray*)extraTypes resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+   reject(@"Not Supported", @"Not supported on iOS platform.", nil);
+ }
+ 
+-RCT_EXPORT_METHOD(getSafParameter:(NSString*)uriString mode:(NSString*)openMode resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(getSafParameter:(NSString*)uriString openMode:(NSString*)openMode resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+   reject(@"Not Supported", @"Not supported on iOS platform.", nil);
+ }
+ 
+ // FFmpegKit
+ 
+-RCT_EXPORT_METHOD(cancel:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(cancel:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     [FFmpegKit cancel];
+ 
+     resolve(nil);
+ }
+ 
+-RCT_EXPORT_METHOD(cancelSession:(int)sessionId resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(cancelSession:(double)sessionId resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     [FFmpegKit cancel:sessionId];
+ 
+     resolve(nil);
+ }
+ 
+-RCT_EXPORT_METHOD(getFFmpegSessions:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(getFFmpegSessions:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     resolve([FFmpegKitReactNativeModule toSessionArray:[FFmpegKit listSessions]]);
+ }
+ 
+ // FFprobeKit
+ 
+-RCT_EXPORT_METHOD(getFFprobeSessions:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(getFFprobeSessions:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     resolve([FFmpegKitReactNativeModule toSessionArray:[FFprobeKit listFFprobeSessions]]);
+ }
+ 
+-RCT_EXPORT_METHOD(getMediaInformationSessions:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(getMediaInformationSessions:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     resolve([FFmpegKitReactNativeModule toSessionArray:[FFprobeKit listMediaInformationSessions]]);
+ }
+ 
+ // MediaInformationSession
+ 
+-RCT_EXPORT_METHOD(getMediaInformation:(int)sessionId resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(getMediaInformation:(double)sessionId resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     AbstractSession* session = (AbstractSession*)[FFmpegKitConfig getSession:sessionId];
+     if (session == nil) {
+         reject(@"SESSION_NOT_FOUND", @"Session not found.", nil);
+@@ -698,15 +698,15 @@ RCT_EXPORT_METHOD(getMediaInformation:(int)sessionId resolver:(RCTPromiseResolve
+ 
+ // Packages
+ 
+-RCT_EXPORT_METHOD(getPackageName:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(getPackageName:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     resolve([Packages getPackageName]);
+ }
+ 
+-RCT_EXPORT_METHOD(getExternalLibraries:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(getExternalLibraries:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     resolve([Packages getExternalLibraries]);
+ }
+ 
+-RCT_EXPORT_METHOD(uninit:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject) {
++RCT_EXPORT_METHOD(uninit:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject) {
+     resolve(nil);
+ }
+ 
+@@ -878,7 +878,7 @@ RCT_EXPORT_METHOD(uninit:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRej
+ 
+ #ifdef RCT_NEW_ARCH_ENABLED
+ - (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:(const facebook::react::ObjCTurboModule::InitParams &)params {
+-    return std::make_shared<facebook::react::NativeFFmpegKitReactNativeModuleSpecJSI>(params);
++    return std::make_shared<facebook::react::NativeFFmpegKitSpecJSI>(params);
+ }
+ #endif
+ 

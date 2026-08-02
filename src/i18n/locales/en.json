@@ -1,0 +1,105 @@
+{
+  "common": {
+    "appName": "TubeVault",
+    "cancel": "Cancel",
+    "retry": "Retry",
+    "delete": "Delete",
+    "save": "Save",
+    "close": "Close",
+    "loading": "Loading…"
+  },
+  "tabs": {
+    "search": "Search",
+    "library": "Library",
+    "downloads": "Downloads",
+    "settings": "Settings"
+  },
+  "search": {
+    "placeholder": "Search YouTube…",
+    "noResults": "No results",
+    "preview": "Preview",
+    "downloadAudio": "Download audio",
+    "downloadVideo": "Download video",
+    "chooseFormat": "Choose download type",
+    "hint": "Search YouTube and save audio or video for offline listening",
+    "chooseCategory": "Pick a genre for this download"
+  },
+  "library": {
+    "empty": "Your library is empty",
+    "all": "All",
+    "audio": "Audio",
+    "video": "Video",
+    "deleteConfirmTitle": "Delete?",
+    "deleteConfirmBody": "The file will be removed from this device",
+    "editCategories": "Edit categories",
+    "rename": "Rename",
+    "renameName": "Title",
+    "renameArtist": "Artist"
+  },
+  "downloads": {
+    "empty": "No active downloads",
+    "active": "Active",
+    "completed": "Completed",
+    "status": {
+      "queued": "Queued",
+      "resolving": "Resolving",
+      "downloading": "Downloading",
+      "downloading_video": "Downloading video",
+      "downloading_audio": "Downloading audio",
+      "muxing": "Merging",
+      "finalizing": "Finalizing",
+      "done": "Done",
+      "failed": "Failed"
+    }
+  },
+  "player": {
+    "nowPlaying": "Now playing",
+    "noTrack": "Nothing is playing",
+    "shuffle": "Shuffle",
+    "repeat": "Repeat",
+    "queue": "Queue"
+  },
+  "settings": {
+    "language": "Language",
+    "languageMn": "Монгол",
+    "languageEn": "English",
+    "storage": "Storage",
+    "usedSpace": "Used space",
+    "mediaFiles": "Media files",
+    "appearance": "Appearance",
+    "theme": "Theme",
+    "themeSystem": "Follow system",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "downloads": "Downloads",
+    "askCategory": "Choose genre when downloading",
+    "askCategoryHint": "When off, downloads are tagged automatically — you can always edit genres by long-pressing an item in the library."
+  },
+  "categories": {
+    "title": "Categories",
+    "new": "New category",
+    "namePlaceholder": "Category name",
+    "seeds": {
+      "rnb": "R&B",
+      "pop": "Pop",
+      "hiphop": "Hip hop",
+      "rock": "Rock/Metal",
+      "edm": "EDM",
+      "classical": "Classical",
+      "country": "Country",
+      "educational": "Educational",
+      "podcasts": "Podcasts",
+      "other": "Other"
+    }
+  },
+  "errors": {
+    "RESOLVE_FAILED": "Could not fetch video info",
+    "NO_FORMAT": "No suitable format found",
+    "DOWNLOAD_FAILED": "Download failed",
+    "URL_EXPIRED": "The link expired",
+    "MUX_FAILED": "Merging the video failed",
+    "STORAGE_FULL": "Device storage is full",
+    "NETWORK": "Network error",
+    "UNKNOWN": "Something went wrong"
+  }
+}
